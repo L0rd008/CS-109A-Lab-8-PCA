@@ -5,6 +5,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
 from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, classification_report
 import matplotlib.pyplot as plt
 import seaborn as sns # For potentially nicer plots
 import os
@@ -71,6 +72,9 @@ scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
+# PCA is only applied to continuous input features.
+# The target `y` (quality class) is categorical and should not be scaled or transformed.
+
 # For convenience, convert scaled arrays back to DataFrames with column names
 X_train_scaled_df = pd.DataFrame(X_train_scaled, columns=X_train.columns, index=X_train.index)
 X_test_scaled_df = pd.DataFrame(X_test_scaled, columns=X_test.columns, index=X_test.index)
@@ -95,11 +99,20 @@ print(f"Shape of .intercept_: {log_reg_q1.intercept_.shape}")
 print("\nNumber of classes:", len(np.unique(y_train)))
 print("Number of features:", X_train_scaled_df.shape[1])
 
+# Classification Report for the Initial Model (on Test Data for Consistency)
+print("\nClassification Report for log_reg_q1 (trained for coefficient inspection, evaluated on test set):")
+y_pred_q1_test = log_reg_q1.predict(X_test_scaled_df)
+print(classification_report(y_test, y_pred_q1_test, zero_division=0))
+
 print("\n--- Question: Cross-Validation Results ---")
 # Logistic Regression without CV (already fit as log_reg_q1, or re-fit for clarity)
 lr_no_cv = LogisticRegression(C=1000000, solver='lbfgs', multi_class='ovr', max_iter=10000).fit(X_train_scaled_df, y_train)
 lr_no_cv_test_accuracy = accuracy_score(y_test, lr_no_cv.predict(X_test_scaled_df))
 print(f"Logistic Regression (no CV) Test Accuracy: {lr_no_cv_test_accuracy:.4f}")
+
+# Classification Report
+print("\nClassification Report for Logistic Regression (no CV):")
+print(classification_report(y_test, lr_no_cv.predict(X_test_scaled_df), zero_division=0))
 
 # Logistic Regression with CV (Lasso as in lab)
 # Note: The lab uses 'liblinear' for L1 penalty. 'lbfgs' supports L2.
@@ -109,12 +122,21 @@ lr_cv_lasso.fit(X_train_scaled_df, y_train)
 lr_cv_lasso_test_accuracy = accuracy_score(y_test, lr_cv_lasso.predict(X_test_scaled_df))
 print(f"Logistic Regression CV (L1 penalty) Test Accuracy: {lr_cv_lasso_test_accuracy:.4f}")
 
+# Classification Report
+print("\nClassification Report for Logistic Regression CV (L1 penalty):")
+print(classification_report(y_test, lr_cv_lasso.predict(X_test_scaled_df), zero_division=0))
+
 # For a more direct comparison with lbfgs, use L2 with CV
 lr_cv_l2 = LogisticRegressionCV(solver='lbfgs', multi_class='ovr', penalty='l2', # lbfgs typically uses l2
                                 max_iter=10000, cv=5, random_state=8)
 lr_cv_l2.fit(X_train_scaled_df, y_train)
 lr_cv_l2_test_accuracy = accuracy_score(y_test, lr_cv_l2.predict(X_test_scaled_df))
 print(f"Logistic Regression CV (L2 penalty) Test Accuracy: {lr_cv_l2_test_accuracy:.4f}")
+
+# Classification Report
+print("\nClassification Report for Logistic Regression CV (L2 penalty):")
+print(classification_report(y_test, lr_cv_l2.predict(X_test_scaled_df), zero_division=0))
+
 
 print("\n--- Question: Meaning of 2D PCA Features ---")
 pca_2d_transformer = PCA(n_components=2, random_state=8) # Use random_state for reproducibility of PCA if solver involves randomness
@@ -125,24 +147,32 @@ print("First 2 PCA Components (Eigenvectors):\n", pca_2d_transformer.components_
 print("Shape of components_:", pca_2d_transformer.components_.shape)
 
 print("\n--- Question: Critique PCA Plot (Quality) ---")
-plt.figure(figsize=(8, 6))
-colors = ['r', 'c', 'b'] # Bad, Average, Great
-labels = np.unique(y_train) # Should be [0, 1, 2]
+plt.figure(figsize=(10, 7))
+pca_df_quality = pd.DataFrame(X_train_2D, columns=['PC1', 'PC2'])
+# y_train is a Pandas Series. Its values correspond row-wise to X_train_2D.
+pca_df_quality['quality_numeric'] = y_train.values # y_train.values to ensure order matches X_train_2D
 label_text_map = {0: "Bad Wines", 1: "Average Wines", 2: "Great Wines"}
+pca_df_quality['quality_label'] = pca_df_quality['quality_numeric'].map(label_text_map)
 
-for quality_val in labels:
-    # Ensure y_train is a pandas Series to use .loc for boolean indexing matching X_train_2D's index
-    # or convert X_train_2D to a DataFrame and use numpy boolean indexing
-    mask = (y_train == quality_val)
-    plt.scatter(X_train_2D[mask, 0], X_train_2D[mask, 1],
-                c=colors[quality_val], label=label_text_map[quality_val], alpha=0.7)
+custom_palette = {
+    "Bad Wines": "red",
+    "Average Wines": "cyan",
+    "Great Wines": "blue"
+}
+
+sns.scatterplot(data=pca_df_quality, x='PC1', y='PC2', hue='quality_label',
+                palette=custom_palette, # Use a color palette that distinguishes the classes well
+                # style='quality_label', # Different markers for different quality categories
+                hue_order=["Bad Wines", "Average Wines", "Great Wines"], # Consistent legend order
+                alpha=0.7)
+
+
 
 plt.xlabel("PCA Dimension 1")
 plt.ylabel("PCA Dimension 2")
-plt.title("2D PCA of Wine Data (Colored by Quality)")
-plt.legend()
-plt.savefig(os.path.join(output_plot_dir, "pca_plot_by_quality.png"))
-print(f"Saved pca_plot_by_quality.png to {output_plot_dir}")
+plt.title("2D PCA of Wine Data (Colored by Quality) - Seaborn")
+plt.savefig(os.path.join(output_plot_dir, "pca_plot_by_quality_seaborn.png"))
+print(f"Saved pca_plot_by_quality_seaborn.png to {output_plot_dir}")
 plt.show()
 
 print("\n--- Question: PCA Plot by Wine Color ---")
@@ -156,7 +186,11 @@ label_text_type = {1: "Red Wines", 0: "White Wines"} # Assuming is_red=1 for red
 for wine_type_val in [0, 1]: # 0 for white, 1 for red
     # The mask should come from X_train which has the 'is_red' column
     # The plotting coordinates come from X_train_2D
-    mask = (X_train['is_red'] == wine_type_val)
+    # Ensure mask aligns with X_train_2D (which is a numpy array from X_train_scaled_df)
+    # X_train['is_red'] has original indices. We need to match its boolean values to the row order of X_train_2D.
+    # X_train_scaled_df (from which X_train_2D was derived) has the same index as X_train.
+    # So, X_train_2D[X_train['is_red'].values == wine_type_val] should work if y_train.values was used for quality plot.
+    mask = (X_train['is_red'] == wine_type_val) # Using .values to align with numpy array X_train_2D
     plt.scatter(X_train_2D[mask, 0], X_train_2D[mask, 1],
                 c=colors_type[wine_type_val], label=label_text_type[wine_type_val], alpha=0.5)
 
@@ -179,6 +213,10 @@ lr_pca_no_cv.fit(X_train_2D, y_train)
 lr_pca_no_cv_test_accuracy = accuracy_score(y_test, lr_pca_no_cv.predict(X_test_2D))
 print(f"Logistic Regression (no CV) on 2D PCA Test Accuracy: {lr_pca_no_cv_test_accuracy:.4f}")
 
+# Classification Report
+print("\nClassification Report for Logistic Regression (no CV) on 2D PCA:")
+print(classification_report(y_test, lr_pca_no_cv.predict(X_test_2D), zero_division=0))
+
 # Logistic Regression with CV on PCA data
 lr_pca_cv_l2 = LogisticRegressionCV(solver='lbfgs', multi_class='ovr', penalty='l2',
                                     max_iter=10000, cv=5, random_state=8)
@@ -186,12 +224,20 @@ lr_pca_cv_l2.fit(X_train_2D, y_train)
 lr_pca_cv_l2_test_accuracy = accuracy_score(y_test, lr_pca_cv_l2.predict(X_test_2D))
 print(f"Logistic Regression CV (L2 penalty) on 2D PCA Test Accuracy: {lr_pca_cv_l2_test_accuracy:.4f}")
 
+# Classification Report
+print("\nClassification Report for Logistic Regression CV (L2 penalty) on 2D PCA:")
+print(classification_report(y_test, lr_pca_cv_l2.predict(X_test_2D), zero_division=0))
+
 # The lab specifically mentions using L1 (Lasso) for CV models elsewhere, let's include that too:
 lr_pca_cv_lasso = LogisticRegressionCV(solver='liblinear', multi_class='ovr', penalty='l1',
                                        max_iter=10000, cv=5, random_state=8)
 lr_pca_cv_lasso.fit(X_train_2D, y_train)
 lr_pca_cv_lasso_test_accuracy = accuracy_score(y_test, lr_pca_cv_lasso.predict(X_test_2D))
 print(f"Logistic Regression CV (L1 penalty) on 2D PCA Test Accuracy: {lr_pca_cv_lasso_test_accuracy:.4f}")
+
+# Classification Report
+print("\nClassification Report for Logistic Regression CV (L1 penalty) on 2D PCA:")
+print(classification_report(y_test, lr_pca_cv_lasso.predict(X_test_2D), zero_division=0))
 
 print("\n--- Question: 10-Component PCA Analysis ---")
 # 1. Fit PCA with 10 components
@@ -226,4 +272,6 @@ plt.xticks(range(1, 11))
 plt.grid(True)
 plt.savefig(os.path.join(output_plot_dir, "cumulative_variance_explained_10_components.png"))
 print(f"Saved cumulative_variance_explained_10_components.png to {output_plot_dir}")
+print("Suggested elbow point: typically where explained variance growth flattens (look for knee in the curve)")
 plt.show()
+
